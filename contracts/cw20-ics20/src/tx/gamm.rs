@@ -2,7 +2,8 @@
 //!
 //! <https://docs.cosmos.network/master/modules/bank/>
 
-use crate::{proto, tx::Msg, AccountId, Coin, SwapAmountInRoute, ErrorReport, Result};
+use crate::{proto, tx::Msg, Coin, SwapAmountInRoute, ErrorReport, Result};
+use core::convert::TryFrom;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MsgSwapExactAmountIn {
@@ -44,34 +45,24 @@ impl TryFrom<&proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn> for MsgSwapEx
                 .iter()
                 .map(TryFrom::try_from)
                 .collect::<Result<_, _>>()?,
-            token_out_min_amount: proto.token_out_min_amount,
+            token_out_min_amount: proto.token_out_min_amount.parse()?,
         })
     }
 }
 
 impl From<MsgSwapExactAmountIn> for proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
-    fn from(coin: MsgSwapExactAmountIn) -> proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
-        proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn::from(&coin)
+    fn from(msg: MsgSwapExactAmountIn) -> proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
+        proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn::from(&msg)
     }
 }
 
 impl From<&MsgSwapExactAmountIn> for proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
     fn from(msg: &MsgSwapExactAmountIn) -> proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
         proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
-            sender: msg.sender,
+            sender: msg.sender.to_string(),
             routes: msg.routes.iter().map(Into::into).collect(),
             token_in: msg.token_in.iter().map(Into::into).collect(),
-            token_out_min_amount: msg.token_out_min_amount,
+            token_out_min_amount: msg.token_out_min_amount.to_string(),
         }
     }
-}
-
-/// Coin defines a token with a denomination and an amount.
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-pub struct SwapAmountInRoute {
-    /// Denomination
-    pub pool_id: u64,
-
-    /// Amount
-    pub token_out_denom: Denom,
 }

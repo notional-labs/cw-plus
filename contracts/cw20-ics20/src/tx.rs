@@ -104,10 +104,12 @@
 
 mod msg;
 mod cosmos_tx;
+mod gamm;
 
 pub use self::{
 
 
     msg::{Msg, MsgProto},
     cosmos_tx::CosmosTx,
+    gamm::{MsgSwapExactAmountIn},
 };

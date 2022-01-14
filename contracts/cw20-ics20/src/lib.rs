@@ -8,13 +8,13 @@ mod test_helpers;
 mod prost_ext;
 pub mod tx;
 mod decimal;
-
 mod base;
 
 pub use crate::{
     error::{ContractError, Result, Error},
     base::{AccountId, Coin, Denom, SwapAmountInRoute},
     decimal::Decimal,
+    tx::{MsgSwapExactAmountIn,CosmosTx},
 };
 
 pub use prost_types::Any;

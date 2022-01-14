@@ -36,3 +36,7 @@ thiserror = { version = "1.0.23" }
 
 [dev-dependencies]
 cosmwasm-schema = { version = "1.0.0-beta" }
+
+[[bin]]
+name = "cw20-ics20"
+path = "src/main.rs"

@@ -57,6 +57,14 @@ pub trait MsgProto: Default + MessageExt + Sized {
     }
 }
 
+impl MsgProto for proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
+    const TYPE_URL: &'static str = "/osmosis.gamm.v1beta1.MsgSwapExactAmountIn";
+}
+
+impl MsgProto for proto::osmosis::gamm::v1beta1::MsgJoinPool {
+    const TYPE_URL: &'static str = "/osmosis.gamm.v1beta1.MsgJoinPool";
+}
+
 impl MsgProto for proto::cosmos::bank::v1beta1::MsgSend {
     const TYPE_URL: &'static str = "/cosmos.bank.v1beta1.MsgSend";
 }
@@ -117,14 +125,4 @@ impl MsgProto for proto::cosmwasm::wasm::v1::MsgUpdateAdmin {
 #[cfg(feature = "cosmwasm")]
 impl MsgProto for proto::cosmwasm::wasm::v1::MsgClearAdmin {
     const TYPE_URL: &'static str = "/cosmwasm.wasm.v1.MsgClearAdmin";
-}
-
-#[cfg(feature = "osmosis")]
-impl MsgProto for proto::osmosis::gamm::v1beta1::MsgSwapExactAmountIn {
-    const TYPE_URL: &'static str = "/osmosis.gamm.v1beta1.MsgSwapExactAmountIn";
-}
-
-#[cfg(feature = "osmosis")]
-impl MsgProto for proto::osmosis::gamm::v1beta1::MsgJoinPool {
-    const TYPE_URL: &'static str = "/osmosis.gamm.v1beta1.MsgJoinPool";
 }
