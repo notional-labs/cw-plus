@@ -1,0 +1,42 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SwapMsg",
+    "description": "This is the message for swapping contract token on osmosis via ibc",
+    "type": "object",
+    "required": [
+      "channel",
+      "pool_id",
+      "exact_amount_out",
+      "remote_address",
+      "timeout"
+    ],
+    "properties": {
+        "channel": {
+          "description": "The local channel to send the packets on",
+          "type": "string"
+        },
+        "remote_address": {
+          "description": "The remote address to send the swapt token to. Don't use HumanAddress as this will likely have a different Bech32 prefix than we use and cannot be validated locally",
+          "type": "string"
+        },
+        "pool_id": {
+          "description": "pool on osmosis to swap token on",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "exact_amount_out": {
+            "description": "Exact token out after swap on osmosis pool",
+            "type": "string"
+        },
+        "timeout": {
+            "description": "How long the packet lives in seconds. If not specified, use default_timeout",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0.0
+        }
+    }
+}

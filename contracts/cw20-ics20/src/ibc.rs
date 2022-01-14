@@ -16,9 +16,40 @@ use cw20::Cw20ExecuteMsg;
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
 
-/// The format for sending an ics20 packet.
+/// The format for sending an ics27 packet.
 /// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/applications/transfer/v1/transfer.proto#L11-L20
 /// This is compatible with the JSON serialization
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
+pub struct Ics27Packet {
+    /// amount of tokens to transfer is encoded as a string, but limited to u64 max
+    pub amount: Uint128,
+    /// the token denomination to be transferred
+    pub denom: String,
+    /// the recipient address on the destination chain
+    pub receiver: String,
+    /// the sender address
+    pub sender: String,
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 pub struct Ics20Packet {
     /// amount of tokens to transfer is encoded as a string, but limited to u64 max

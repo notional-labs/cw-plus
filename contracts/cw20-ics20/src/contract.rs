@@ -53,6 +53,61 @@ pub fn execute(
     }
 }
 
+pub fn execute_ibc_swap(
+    deps: DepsMut,
+    env: Env,
+    msg: TransferMsg,
+    amount: Amount,
+    sender: Addr,
+) -> Result<Response, ContractError> {
+    if amount.is_empty() {
+        return Err(ContractError::NoFunds {});
+    }
+    // ensure the requested channel is registered
+    // FIXME: add a .has method to map to make this faster
+    if CHANNEL_INFO.may_load(deps.storage, &msg.channel)?.is_none() {
+        return Err(ContractError::NoSuchChannel { id: msg.channel });
+    }
+
+    // delta from user is in seconds
+    let timeout_delta = match msg.timeout {
+        Some(t) => t,
+        None => CONFIG.load(deps.storage)?.default_timeout,
+    };
+    // timeout is in nanoseconds
+    let timeout = env.block.time.plus_seconds(timeout_delta);
+
+    // build ics20 packet
+    let packet = Ics20Packet::new(
+        amount.amount(),
+        amount.denom(),
+        sender.as_ref(),
+        &msg.remote_address,
+    );
+    packet.validate()?;
+
+    // prepare message
+    let msg = IbcMsg::SendPacket {
+        channel_id: msg.channel,
+        data: to_binary(&packet)?,
+        timeout: timeout.into(),
+    };
+
+    // Note: we update local state when we get ack - do not count this transfer towards anything until acked
+    // similar event messages like ibctransfer module
+
+    // send response
+    let res = Response::new()
+        .add_message(msg)
+        .add_attribute("action", "transfer")
+        .add_attribute("sender", &packet.sender)
+        .add_attribute("receiver", &packet.receiver)
+        .add_attribute("denom", &packet.denom)
+        .add_attribute("amount", &packet.amount.to_string());
+    Ok(res)
+}
+
+
 pub fn execute_receive(
     deps: DepsMut,
     env: Env,
