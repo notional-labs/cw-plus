@@ -8,47 +8,21 @@ use cosmwasm_std::{
     IbcReceiveResponse, Reply, Response, StdResult, SubMsg, Uint128, WasmMsg,
 };
 
+use std::convert::TryInto;
+use hex_literal::hex;
+use std::convert::AsRef;
+
+use sha2::{Sha256, Digest};
 use crate::amount::Amount;
+
+use subtle_encoding::bech32;
+
 use crate::error::{ContractError, Never};
 use crate::state::{ChannelInfo, CHANNEL_INFO, CHANNEL_STATE};
 use cw20::Cw20ExecuteMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
 pub const ICS20_ORDERING: IbcOrder = IbcOrder::Unordered;
-
-/// The format for sending an ics27 packet.
-/// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/applications/transfer/v1/transfer.proto#L11-L20
-/// This is compatible with the JSON serialization
-#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
-pub struct Ics27Packet {
-    /// amount of tokens to transfer is encoded as a string, but limited to u64 max
-    pub amount: Uint128,
-    /// the token denomination to be transferred
-    pub denom: String,
-    /// the recipient address on the destination chain
-    pub receiver: String,
-    /// the sender address
-    pub sender: String,
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
 pub struct Ics20Packet {
@@ -150,6 +124,43 @@ pub fn ibc_channel_open(
     Ok(())
 }
 
+
+pub fn get_ica_address(controller_port_id: &String) -> String{
+        // create a Sha256 object
+    let mut hasher = Sha256::new();
+
+    // first hash ica module acc addr
+    hasher.update([103, 215, 116, 116, 202, 142, 58, 88, 18, 222, 50, 58, 40, 215, 198, 218, 107, 62, 79, 41]);
+
+    let ica_module_acc_addr_hash = hasher.finalize();
+
+    let new_hasher = Sha256::new();
+
+
+    let out = new_hasher.chain_update(ica_module_acc_addr_hash).chain_update(controller_port_id.as_bytes()).finalize();
+
+
+    let mut x = vec![0;32];
+
+    x[..32].clone_from_slice(&out.as_slice());
+
+    let ica_addr = bech32::encode("juno", &x);
+
+
+
+    return ica_addr;
+}
+
+pub fn is_ica_port(controller_port_id: &String) -> bool{
+    let split = controller_port_id.split(".");
+    let vec = split.collect::<Vec<&str>>();
+    if vec.len() != 4 {
+        return false;
+    } else {
+        return true;
+    }
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 /// record the channel in CHANNEL_INFO
 pub fn ibc_channel_connect(
@@ -161,11 +172,27 @@ pub fn ibc_channel_connect(
     enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
 
     let channel: IbcChannel = msg.into();
-    let info = ChannelInfo {
-        id: channel.endpoint.channel_id,
-        counterparty_endpoint: channel.counterparty_endpoint,
-        connection_id: channel.connection_id,
-    };
+    let port_id = channel.endpoint.port_id;
+    let info;
+
+    if is_ica_port(&port_id) {
+        info = ChannelInfo {
+            id: channel.endpoint.channel_id,
+            counterparty_endpoint: channel.counterparty_endpoint,
+            connection_id: channel.connection_id,
+            ica_addr: get_ica_address(&port_id)
+        };
+    
+    } else {
+        info = ChannelInfo {
+            id: channel.endpoint.channel_id,
+            counterparty_endpoint: channel.counterparty_endpoint,
+            connection_id: channel.connection_id,
+            ica_addr: "".to_string()
+        };
+    
+    }
+
     CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
 
     Ok(IbcBasicResponse::default())

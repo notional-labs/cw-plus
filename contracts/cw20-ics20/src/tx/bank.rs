@@ -2,17 +2,17 @@
 //!
 //! <https://docs.cosmos.network/master/modules/bank/>
 
-use crate::{proto, tx::Msg, AccountId, Coin, ErrorReport, Result};
+use crate::{proto, tx::Msg, Coin, ErrorReport, Result};
 use core::convert::TryFrom;
 
 /// MsgSend represents a message to send coins from one account to another.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct MsgSend {
     /// Sender's address.
-    pub from_address: AccountId,
+    pub from_address: String,
 
     /// Recipient's address.
-    pub to_address: AccountId,
+    pub to_address: String,
 
     /// Amount to send
     pub amount: Vec<Coin>,

@@ -31,4 +31,6 @@ pub struct ChannelInfo {
     pub counterparty_endpoint: IbcEndpoint,
     /// the connection this exists on (you can use to query client/consensus info)
     pub connection_id: String,
+
+    pub ica_addr: String,
 }

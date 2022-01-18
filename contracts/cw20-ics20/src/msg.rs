@@ -22,6 +22,8 @@ pub enum ExecuteMsg {
     Receive(Cw20ReceiveMsg),
     /// This allows us to transfer *exactly one* native token
     Transfer(TransferMsg),
+    
+    IbcSwap(SwapMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -37,9 +39,14 @@ pub struct SwapMsg {
 
     pub pool_id: u64,
 
-    pub exact_amount_out: Option<u64>,
+    pub exact_amount_out: String,
 
     pub out_denom: String,
+
+    pub in_denom: String,
+
+    pub in_amount: String,
+
 }
 
 /// This is the message we accept via Receive

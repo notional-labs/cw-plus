@@ -10,13 +10,13 @@ use cw20::{Cw20Coin, Cw20ReceiveMsg};
 
 use crate::amount::Amount;
 use crate::error::ContractError;
-use crate::ibc::Ics20Packet;
+use crate::ibc::{Ics20Packet,InterchainAccountPacketData};
 use crate::msg::{
     ChannelResponse, ExecuteMsg, InitMsg, ListChannelsResponse, MigrateMsg, PortResponse, QueryMsg,
     TransferMsg, SwapMsg,
 };
 use crate::tx::{
-    MsgSwapExactAmountIn,MsgJoinPool,MsgSend,
+    MsgSwapExactAmountIn,MsgJoinPool,MsgSend,Msg, CosmosTx,
 };
 use crate::base::{Coin,Denom,SwapAmountInRoute,};
 use crate::state::{Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
@@ -53,7 +53,11 @@ pub fn execute(
         ExecuteMsg::Transfer(msg) => {
             let coin = one_coin(&info)?;
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
-        }
+        },
+        ExecuteMsg::IbcSwap(msg) => {
+            let coin = one_coin(&info)?;
+            execute_ibc_swap(deps, env, msg, Amount::Native(coin), info.sender)
+        },
     }
 }
 
@@ -69,8 +73,16 @@ pub fn execute_ibc_swap(
     }
     // ensure the requested channel is registered
     // FIXME: add a .has method to map to make this faster
-    if CHANNEL_INFO.may_load(deps.storage, &msg.channel)?.is_none() {
+    let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?; 
+    
+    if chan_info.is_none() {
         return Err(ContractError::NoSuchChannel { id: msg.channel });
+    }
+
+    let ica_addr = chan_info.unwrap().ica_addr;
+
+    if ica_addr == "" {
+        return Err(ContractError::NotAnIcaChan {channel_id: msg.channel})
     }
 
     // delta from user is in seconds
@@ -83,28 +95,40 @@ pub fn execute_ibc_swap(
 
     let route = SwapAmountInRoute{
         pool_id : msg.pool_id,
-        token_out_denom: msg.out_denom.into(),
+        token_out_denom: msg.out_denom.to_string(),
+    };
+    let token_in = Coin{
+        denom: msg.in_denom.to_string(),
+        amount: msg.in_amount.to_string(),
     };
 
 
-    // let swap_msg = MsgSwapExactAmountIn{
-    //     sender: sender.as_ref().to_string(),
-    //     routes: vec![route],
-    //     toekn_in: 
+    let swap_msg = MsgSwapExactAmountIn{
+        sender: ica_addr.to_string(),
+        routes: vec![route],
+        token_in: token_in,
+        token_out_min_amount: msg.exact_amount_out.to_string(),
+    }.to_any().unwrap();
+
+    let token_out = Coin{
+        denom: msg.out_denom.to_string(),
+        amount: msg.exact_amount_out.to_string(),
+    };
 
 
+    let send_msg = MsgSend{
+        from_address: ica_addr.to_string(),
+        to_address: msg.remote_address.to_string(),
+        amount: vec![token_out],
+    }.to_any().unwrap();
 
-    // }
+    let cosmos_tx = CosmosTx::new([swap_msg, send_msg]).into_bytes().unwrap();
 
-    // build ics20 packet
-    let packet = Ics20Packet::new(
-        amount.amount(),
-        amount.denom(),
-        sender.as_ref(),
-        &msg.remote_address,
-    );
-    packet.validate()?;
-
+    let packet = InterchainAccountPacketData{
+        r#type: 1,
+        data: cosmos_tx,
+        memo: "".to_string(),
+    };
     // prepare message
     let msg = IbcMsg::SendPacket {
         channel_id: msg.channel,
@@ -117,12 +141,7 @@ pub fn execute_ibc_swap(
 
     // send response
     let res = Response::new()
-        .add_message(msg)
-        .add_attribute("action", "transfer")
-        .add_attribute("sender", &packet.sender)
-        .add_attribute("receiver", &packet.receiver)
-        .add_attribute("denom", &packet.denom)
-        .add_attribute("amount", &packet.amount.to_string());
+        .add_message(msg);
     Ok(res)
 }
 

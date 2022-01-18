@@ -6,12 +6,22 @@
     "required": [
       "channel",
       "pool_id",
+      "in_denom",
+      "in_amount",
       "exact_amount_out",
       "out_denom",
       "remote_address",
       "timeout"
     ],
     "properties": {
+        "in_denom": {
+          "description": "in_denom",
+          "type": "string"
+        },
+        "in_amount": {
+          "description": "in_amount",
+          "type": "string"
+        },
         "channel": {
           "description": "The local channel to send the packets on",
           "type": "string"

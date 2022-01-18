@@ -42,6 +42,7 @@ pub fn mock_channel_info(channel_id: &str) -> ChannelInfo {
             channel_id: format!("{}5", channel_id),
         },
         connection_id: CONNECTION_ID.into(),
+        ica_addr: "".to_string()
     }
 }
 

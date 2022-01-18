@@ -121,10 +121,10 @@ impl Serialize for AccountId {
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Coin {
     /// Denomination
-    pub denom: Denom,
+    pub denom: String,
 
     /// Amount
-    pub amount: Decimal,
+    pub amount: String,
 }
 
 impl TryFrom<proto::cosmos::base::v1beta1::Coin> for Coin {

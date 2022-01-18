@@ -51,6 +51,9 @@ pub enum ContractError {
 
     #[error("Got a submessage reply with unknown id: {id}")]
     UnknownReplyId { id: u64 },
+
+    #[error("{channel_id} is not an Ica Channel")]
+    NotAnIcaChan { channel_id: String},
 }
 
 impl From<FromUtf8Error> for ContractError {

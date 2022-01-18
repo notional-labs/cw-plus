@@ -112,6 +112,6 @@ pub use self::{
 
     msg::{Msg, MsgProto},
     cosmos_tx::CosmosTx,
-    gamm::{MsgSwapExactAmountIn, MsgJoinPool},
+    gamm::{MsgSwapExactAmountIn, MsgJoinPool,},
     bank::{MsgSend,},
 };

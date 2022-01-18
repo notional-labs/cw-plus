@@ -33,10 +33,9 @@ subtle-encoding = { version = "0.5", features = ["bech32-preview"] }
 tendermint = { version = "=0.23.3", features = ["secp256k1"] }
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
+sha2 = "0.10.1"
+hex-literal = "0.3.4"
 
 [dev-dependencies]
 cosmwasm-schema = { version = "1.0.0-beta" }
 
-[[bin]]
-name = "cw20-ics20"
-path = "src/main.rs"
