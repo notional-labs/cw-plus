@@ -12,8 +12,8 @@ pub struct MsgSwapExactAmountIn {
     pub sender: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "2")]
     pub routes: ::prost::alloc::vec::Vec<SwapAmountInRoute>,
-    #[prost(message, repeated, tag = "3")]
-    pub token_in: ::prost::alloc::vec::Vec<super::super::super::cosmos::base::v1beta1::Coin>,  
+    #[prost(message, optional, tag = "3")]
+    pub token_in: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,  
     #[prost(string, tag = "4")]
     pub token_out_min_amount: ::prost::alloc::string::String,
 }

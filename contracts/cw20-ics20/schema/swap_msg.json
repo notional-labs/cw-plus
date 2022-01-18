@@ -7,6 +7,7 @@
       "channel",
       "pool_id",
       "exact_amount_out",
+      "out_denom",
       "remote_address",
       "timeout"
     ],
@@ -26,17 +27,21 @@
           "minimum": 0.0
         },
         "exact_amount_out": {
-            "description": "Exact token out after swap on osmosis pool",
-            "type": "string"
+          "description": "Exact token out after swap on osmosis pool",
+          "type": "string"
         },
         "timeout": {
-            "description": "How long the packet lives in seconds. If not specified, use default_timeout",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint64",
-            "minimum": 0.0
+          "description": "How long the packet lives in seconds. If not specified, use default_timeout",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "out_denom": {
+          "description": "out denom",
+          "type": "string"
         }
     }
 }

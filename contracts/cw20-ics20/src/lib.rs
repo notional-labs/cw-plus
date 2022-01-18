@@ -14,7 +14,7 @@ pub use crate::{
     error::{ContractError, Result, Error},
     base::{AccountId, Coin, Denom, SwapAmountInRoute},
     decimal::Decimal,
-    tx::{MsgSwapExactAmountIn,CosmosTx},
+    tx::{MsgSwapExactAmountIn,CosmosTx,MsgJoinPool,MsgSend,},
 };
 
 pub use prost_types::Any;

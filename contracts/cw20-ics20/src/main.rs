@@ -31,7 +31,7 @@ fn main() {
     let msg_send = MsgSwapExactAmountIn {
         sender: "test".to_string(),
         routes: vec![test_routes.clone()],
-        token_in: vec![amount.clone()],
+        token_in: amount.clone(),
         token_out_min_amount: "1".to_string(),
     }
     .to_any()

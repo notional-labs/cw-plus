@@ -197,7 +197,7 @@ pub struct SwapAmountInRoute {
     pub pool_id: u64,
 
     /// Amount
-    pub token_out_denom: Denom,
+    pub token_out_denom: String,
 }
 
 impl TryFrom<proto::osmosis::gamm::v1beta1::SwapAmountInRoute> for SwapAmountInRoute {

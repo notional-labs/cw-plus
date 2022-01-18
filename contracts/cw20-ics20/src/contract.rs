@@ -13,8 +13,12 @@ use crate::error::ContractError;
 use crate::ibc::Ics20Packet;
 use crate::msg::{
     ChannelResponse, ExecuteMsg, InitMsg, ListChannelsResponse, MigrateMsg, PortResponse, QueryMsg,
-    TransferMsg,
+    TransferMsg, SwapMsg,
 };
+use crate::tx::{
+    MsgSwapExactAmountIn,MsgJoinPool,MsgSend,
+};
+use crate::base::{Coin,Denom,SwapAmountInRoute,};
 use crate::state::{Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
 use cw0::{nonpayable, one_coin};
 
@@ -56,7 +60,7 @@ pub fn execute(
 pub fn execute_ibc_swap(
     deps: DepsMut,
     env: Env,
-    msg: TransferMsg,
+    msg: SwapMsg,
     amount: Amount,
     sender: Addr,
 ) -> Result<Response, ContractError> {
@@ -76,6 +80,21 @@ pub fn execute_ibc_swap(
     };
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
+
+    let route = SwapAmountInRoute{
+        pool_id : msg.pool_id,
+        token_out_denom: msg.out_denom.into(),
+    };
+
+
+    // let swap_msg = MsgSwapExactAmountIn{
+    //     sender: sender.as_ref().to_string(),
+    //     routes: vec![route],
+    //     toekn_in: 
+
+
+
+    // }
 
     // build ics20 packet
     let packet = Ics20Packet::new(

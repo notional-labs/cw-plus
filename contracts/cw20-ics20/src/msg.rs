@@ -35,9 +35,11 @@ pub struct SwapMsg {
     /// How long the packet lives in seconds. If not specified, use default_timeout
     pub timeout: Option<u64>,
 
-    pub pool_id: String,
+    pub pool_id: u64,
 
     pub exact_amount_out: Option<u64>,
+
+    pub out_denom: String,
 }
 
 /// This is the message we accept via Receive

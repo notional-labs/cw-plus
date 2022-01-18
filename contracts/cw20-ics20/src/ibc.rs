@@ -62,6 +62,25 @@ pub struct Ics20Packet {
     pub sender: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug, Default)]
+pub struct InterchainAccountPacketData {
+    pub r#type: i32,
+
+    pub data: Vec<u8>,
+
+    pub memo: String,
+}
+
+impl InterchainAccountPacketData {
+    pub fn new<T: Into<String>>(r#type: i32, data: Vec<u8>, memo: &str) -> Self {
+        InterchainAccountPacketData {
+            r#type: r#type.into(),
+            data: data,
+            memo: memo.to_string(),
+        }
+    }
+}
+
 impl Ics20Packet {
     pub fn new<T: Into<String>>(amount: Uint128, denom: T, sender: &str, receiver: &str) -> Self {
         Ics20Packet {
@@ -156,21 +175,21 @@ fn enforce_order_and_version(
     channel: &IbcChannel,
     counterparty_version: Option<&str>,
 ) -> Result<(), ContractError> {
-    if channel.version != ICS20_VERSION {
-        return Err(ContractError::InvalidIbcVersion {
-            version: channel.version.clone(),
-        });
-    }
-    if let Some(version) = counterparty_version {
-        if version != ICS20_VERSION {
-            return Err(ContractError::InvalidIbcVersion {
-                version: version.to_string(),
-            });
-        }
-    }
-    if channel.order != ICS20_ORDERING {
-        return Err(ContractError::OnlyOrderedChannel {});
-    }
+    // if channel.version != ICS20_VERSION {
+    //     return Err(ContractError::InvalidIbcVersion {
+    //         version: channel.version.clone(),
+    //     });
+    // }
+    // if let Some(version) = counterparty_version {
+    //     if version != ICS20_VERSION {
+    //         return Err(ContractError::InvalidIbcVersion {
+    //             version: version.to_string(),
+    //         });
+    //     }
+    // }
+    // if channel.order != ICS20_ORDERING {
+    //     return Err(ContractError::OnlyOrderedChannel {});
+    // }
     Ok(())
 }
 
