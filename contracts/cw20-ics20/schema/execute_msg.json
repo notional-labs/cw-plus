@@ -3,19 +3,6 @@
   "title": "ExecuteMsg",
   "oneOf": [
     {
-      "description": "This accepts a properly-encoded ReceiveMsg from a cw20 contract",
-      "type": "object",
-      "required": [
-        "receive"
-      ],
-      "properties": {
-        "receive": {
-          "$ref": "#/definitions/Cw20ReceiveMsg"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
       "description": "This allows us to transfer *exactly one* native token",
       "type": "object",
       "required": [
@@ -32,11 +19,24 @@
       "description": "This allows us to swap contract token on osmosis via ibc",
       "type": "object",
       "required": [
-        "swap_msg"
+        "swap"
       ],
       "properties": {
-        "swap_msg": {
+        "swap": {
           "$ref": "#/definitions/SwapMsg"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "join pool",
+      "type": "object",
+      "required": [
+        "join_pool"
+      ],
+      "properties": {
+        "swap": {
+          "$ref": "#/definitions/JoinPoolMsg"
         }
       },
       "additionalProperties": false
@@ -47,26 +47,6 @@
       "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
       "type": "string"
     },
-    "Cw20ReceiveMsg": {
-      "description": "Cw20ReceiveMsg should be de/serialized under `Receive()` variant in a ExecuteMsg",
-      "type": "object",
-      "required": [
-        "amount",
-        "msg",
-        "sender"
-      ],
-      "properties": {
-        "amount": {
-          "$ref": "#/definitions/Uint128"
-        },
-        "msg": {
-          "$ref": "#/definitions/Binary"
-        },
-        "sender": {
-          "type": "string"
-        }
-      }
-    },
     "SwapMsg": {
       "description": "This is the message for swapping contract token on osmosis via ibc",
       "type": "object",
@@ -75,36 +55,45 @@
         "pool_id",
         "exact_amount_out",
         "remote_address",
-        "timeout"
+        "in_amount",
+        "out_denom"
       ],
       "properties": {
-          "channel": {
-            "description": "The local channel to send the packets on",
-            "type": "string"
-          },
-          "remote_address": {
-            "description": "The remote address to send the swapt token to. Don't use HumanAddress as this will likely have a different Bech32 prefix than we use and cannot be validated locally",
-            "type": "string"
-          },
-          "pool_id": {
-            "description": "pool on osmosis to swap token on",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0.0
-          },
-          "exact_amount_out": {
-              "description": "Exact token out after swap on osmosis pool",
-              "type": "string"
-          },
-          "timeout": {
-            "description": "How long the packet lives in seconds. If not specified, use default_timeout",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint64",
-            "minimum": 0.0
-          }
+        "in_amount": {
+          "description": "in_amount",
+          "type": "string"
+        },
+        "channel": {
+          "description": "The local channel to send the packets on",
+          "type": "string"
+        },
+        "remote_address": {
+          "description": "The remote address to send the swapt token to. Don't use HumanAddress as this will likely have a different Bech32 prefix than we use and cannot be validated locally",
+          "type": "string"
+        },
+        "pool_id": {
+          "description": "pool on osmosis to swap token on",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "exact_amount_out": {
+          "description": "Exact token out after swap on osmosis pool",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "How long the packet lives in seconds. If not specified, use default_timeout",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "out_denom": {
+          "description": "out denom",
+          "type": "string"
+        }
       }
     },
     "TransferMsg": {
@@ -131,6 +120,49 @@
           ],
           "format": "uint64",
           "minimum": 0.0
+        },
+        "amount": {
+          "description": "amount",
+          "type": "string"
+        }
+      }
+    },
+    "JoinPoolMsg": {
+      "description": "This is the message we accept via Receive",
+      "type": "object",
+      "required": [
+        "channel",
+        "remote_address"
+      ],
+      "properties": {
+        "channel": {
+          "description": "The local channel to send the packets on",
+          "type": "string"
+        },
+        "remote_address": {
+          "description": "The remote address to send to. Don't use HumanAddress as this will likely have a different Bech32 prefix than we use and cannot be validated locally",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "How long the packet lives in seconds. If not specified, use default_timeout",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "in_amount": {
+          "description": "amount",
+          "type": "string"
+        },
+        "pool_id": {
+          "description": "pool_id",
+          "type": "string"
+        },
+        "share_out_exact_amount": {
+          "description": "gamm out",
+          "type": "string"
         }
       }
     },

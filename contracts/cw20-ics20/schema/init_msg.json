@@ -3,7 +3,8 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
-    "default_timeout"
+    "default_timeout",
+    "balances"
   ],
   "properties": {
     "default_timeout": {
@@ -11,6 +12,27 @@
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
+    },
+    "balances": {
+      "description": "balances",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/balance"
+      }
+    }
+  },
+  "definitions": {
+    "balance": {
+      "description": "balance",
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "integer",
+          "format": "uint128"
+        }
+      }
     }
   }
 }

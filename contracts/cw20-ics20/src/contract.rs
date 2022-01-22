@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, IbcMsg, IbcQuery, MessageInfo, Order,
-    PortIdResponse, Response, StdResult,
+    PortIdResponse, Response, StdResult, Uint128,
 };
 
 use cw2::{get_contract_version, set_contract_version};
@@ -10,16 +10,16 @@ use cw20::{Cw20Coin, Cw20ReceiveMsg};
 
 use crate::amount::Amount;
 use crate::error::ContractError;
-use crate::ibc::{Ics20Packet,InterchainAccountPacketData};
+use crate::ibc::{Ics20Packet,InterchainAccountPacketData, get_escrow_address, write_memo};
 use crate::msg::{
     ChannelResponse, ExecuteMsg, InitMsg, ListChannelsResponse, MigrateMsg, PortResponse, QueryMsg,
-    TransferMsg, SwapMsg,
+    TransferMsg, SwapMsg, JoinPoolMsg, BalanceResponse
 };
 use crate::tx::{
-    MsgSwapExactAmountIn,MsgJoinPool,MsgSend,Msg, CosmosTx,
+    MsgSwapExactAmountIn,MsgJoinSwapExternAmountIn,MsgSend,Msg, CosmosTx,
 };
-use crate::base::{Coin,Denom,SwapAmountInRoute,};
-use crate::state::{Config, CHANNEL_INFO, CHANNEL_STATE, CONFIG};
+use crate::base::{Coin,SwapAmountInRoute,};
+use crate::state::{Config, DENOM, CHANNEL_INFO, CHANNEL_STATE, CONFIG, BALANCES, CONNECTION_TO_IBC_DENOM, TRANSFER_ACTION, SWAP_ACTION, JOIN_POOL_ACTION};
 use cw0::{nonpayable, one_coin};
 
 // version info for migration info
@@ -38,6 +38,9 @@ pub fn instantiate(
         default_timeout: msg.default_timeout,
     };
     CONFIG.save(deps.storage, &cfg)?;
+    for balance in msg.balances {
+        BALANCES.save(deps.storage, balance.address, balance.amount);
+    }
     Ok(Response::default())
 }
 
@@ -49,16 +52,110 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Receive(msg) => execute_receive(deps, env, info, msg),
         ExecuteMsg::Transfer(msg) => {
             let coin = one_coin(&info)?;
             execute_transfer(deps, env, msg, Amount::Native(coin), info.sender)
         },
-        ExecuteMsg::IbcSwap(msg) => {
+        ExecuteMsg::Swap(msg) => {
             let coin = one_coin(&info)?;
             execute_ibc_swap(deps, env, msg, Amount::Native(coin), info.sender)
         },
+        ExecuteMsg::JoinPool(msg) => {
+            let coin = one_coin(&info)?;
+            execute_ibc_join(deps, env, msg, Amount::Native(coin), info.sender)
+        }
+
     }
+}
+
+pub fn execute_ibc_join(
+    deps: DepsMut,
+    env: Env,
+    msg: JoinPoolMsg,
+    amount: Amount,
+    sender: Addr,
+) -> Result<Response, ContractError> {
+    if amount.is_empty() {
+        return Err(ContractError::NoFunds {});
+    }
+    // ensure the requested channel is registered
+    // FIXME: add a .has method to map to make this faster
+    let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?; 
+    
+    if chan_info.is_none() {
+        return Err(ContractError::NoSuchChannel { id: msg.channel });
+    }
+
+    let chan_info_unwraped = chan_info.unwrap();
+    let connection_id =chan_info_unwraped.connection_id;
+
+    let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &connection_id).unwrap().unwrap();
+
+    let gamm_denom = "gamm/pool/".to_string() + &msg.pool_id.to_string();
+
+    let ica_addr = chan_info.unwrap().ica_addr;
+
+    if ica_addr == "" {
+        return Err(ContractError::NotAnIcaChan {channel_id: msg.channel})
+    }
+
+    // delta from user is in seconds
+    let timeout_delta = match msg.timeout {
+        Some(t) => t,
+        None => CONFIG.load(deps.storage)?.default_timeout,
+    };
+    // timeout is in nanoseconds
+    let timeout = env.block.time.plus_seconds(timeout_delta);
+
+    let escrow_addr = get_escrow_address(msg.channel, JOIN_POOL_ACTION);
+    let in_amount_u128 : u128 = msg.in_amount.parse::<u128>().unwrap();
+    try_send(deps, &sender, &escrow_addr, in_amount_u128.into()).unwrap();
+
+    let token_in = Coin{
+        denom: ibc_denom,
+        amount: msg.in_amount.to_string(),
+    };
+
+    let join_msg = MsgJoinSwapExternAmountIn{
+        sender: ica_addr.to_string(),
+        token_in: token_in,
+        share_out_min_amount: msg.share_out_exact_amount.to_string(),
+        pool_id: msg.pool_id,
+    }.to_any().unwrap();
+
+    let token_out = Coin{
+        denom: gamm_denom,
+        amount: msg.share_out_exact_amount.to_string(),
+    };
+
+
+    let send_msg = MsgSend{
+        from_address: ica_addr.to_string(),
+        to_address: msg.remote_address.to_string(),
+        amount: vec![token_out],
+    }.to_any().unwrap();
+
+    let cosmos_tx = CosmosTx::new([join_msg, send_msg]).into_bytes().unwrap();
+
+    let packet = InterchainAccountPacketData{
+        r#type: 1,
+        data: cosmos_tx,
+        memo: write_memo(&sender, JOIN_POOL_ACTION),
+    };
+    // prepare message
+    let msg = IbcMsg::SendPacket {
+        channel_id: msg.channel,
+        data: to_binary(&packet)?,
+        timeout: timeout.into(),
+    };
+
+    // Note: we update local state when we get ack - do not count this transfer towards anything until acked
+    // similar event messages like ibctransfer module
+
+    // send response
+    let res = Response::new()
+        .add_message(msg);
+    Ok(res)
 }
 
 pub fn execute_ibc_swap(
@@ -73,7 +170,11 @@ pub fn execute_ibc_swap(
     }
     // ensure the requested channel is registered
     // FIXME: add a .has method to map to make this faster
-    let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?; 
+    let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?;
+    
+    let connection_id = chan_info.unwrap().connection_id;
+
+    let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &connection_id)?.unwrap();
     
     if chan_info.is_none() {
         return Err(ContractError::NoSuchChannel { id: msg.channel });
@@ -93,12 +194,16 @@ pub fn execute_ibc_swap(
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
 
+    let escrow_addr = get_escrow_address(msg.channel, SWAP_ACTION);
+    let in_amount_u128 : u128 = msg.in_amount.parse::<u128>().unwrap();
+    try_send(deps, &sender, &escrow_addr, in_amount_u128.into()).unwrap();
+
     let route = SwapAmountInRoute{
         pool_id : msg.pool_id,
         token_out_denom: msg.out_denom.to_string(),
     };
     let token_in = Coin{
-        denom: msg.in_denom.to_string(),
+        denom: ibc_denom,
         amount: msg.in_amount.to_string(),
     };
 
@@ -145,22 +250,26 @@ pub fn execute_ibc_swap(
     Ok(res)
 }
 
+pub fn try_send(deps: DepsMut, from: &Addr, to: &Addr, amount: Uint128) -> Result<Response, ContractError>{
+    BALANCES.update(
+        deps.storage,
+        from,
+        |balance: Option<Uint128>| -> StdResult<_> {
+            Ok(balance.unwrap_or_default().checked_sub(amount)?)
+        },
+    )?;
+    BALANCES.update(
+        deps.storage,
+        to,
+        |balance: Option<Uint128>| -> StdResult<_> { Ok(balance.unwrap_or_default() + amount) },
+    )?;
 
-pub fn execute_receive(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    wrapper: Cw20ReceiveMsg,
-) -> Result<Response, ContractError> {
-    nonpayable(&info)?;
-
-    let msg: TransferMsg = from_binary(&wrapper.msg)?;
-    let amount = Amount::Cw20(Cw20Coin {
-        address: info.sender.to_string(),
-        amount: wrapper.amount,
-    });
-    let api = deps.api;
-    execute_transfer(deps, env, msg, amount, api.addr_validate(&wrapper.sender)?)
+    let res = Response::new()
+    .add_attribute("action", "transfer")
+    .add_attribute("from", from)
+    .add_attribute("to", to)
+    .add_attribute("amount", amount);
+    Ok(res)
 }
 
 pub fn execute_transfer(
@@ -173,9 +282,11 @@ pub fn execute_transfer(
     if amount.is_empty() {
         return Err(ContractError::NoFunds {});
     }
-    // ensure the requested channel is registered
+    
     // FIXME: add a .has method to map to make this faster
-    if CHANNEL_INFO.may_load(deps.storage, &msg.channel)?.is_none() {
+    let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?; 
+
+    if chan_info.is_none() {
         return Err(ContractError::NoSuchChannel { id: msg.channel });
     }
 
@@ -186,11 +297,16 @@ pub fn execute_transfer(
     };
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
+    let connection_id = chan_info.unwrap().connection_id;
+
+    let escrow_addr = get_escrow_address(msg.channel, TRANSFER_ACTION);
+
+    try_send(deps, &sender, &escrow_addr, msg.amount.into()).unwrap();
 
     // build ics20 packet
     let packet = Ics20Packet::new(
-        amount.amount(),
-        amount.denom(),
+        msg.amount.into(),
+        DENOM,
         sender.as_ref(),
         &msg.remote_address,
     );
@@ -234,7 +350,13 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Port {} => to_binary(&query_port(deps)?),
         QueryMsg::ListChannels {} => to_binary(&query_list(deps)?),
         QueryMsg::Channel { id } => to_binary(&query_channel(deps, id)?),
+        QueryMsg::Balance{ address} => to_binary(&query_balance(deps, address)?)
     }
+}
+
+fn query_balance(deps: Deps, address: String) -> StdResult<BalanceResponse> {
+    let amount = BALANCES.load(deps.storage, &Addr::unchecked(address))?;
+    Ok(BalanceResponse { amount: amount.into() })
 }
 
 fn query_port(deps: Deps) -> StdResult<PortResponse> {
@@ -276,153 +398,4 @@ pub fn query_channel(deps: Deps, id: String) -> StdResult<ChannelResponse> {
         balances,
         total_sent,
     })
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::test_helpers::*;
-
-    use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, CosmosMsg, IbcMsg, StdError, Uint128};
-
-    use cw0::PaymentError;
-
-    #[test]
-    fn setup_and_query() {
-        let deps = setup(&["channel-3", "channel-7"]);
-
-        let raw_list = query(deps.as_ref(), mock_env(), QueryMsg::ListChannels {}).unwrap();
-        let list_res: ListChannelsResponse = from_binary(&raw_list).unwrap();
-        assert_eq!(2, list_res.channels.len());
-        assert_eq!(mock_channel_info("channel-3"), list_res.channels[0]);
-        assert_eq!(mock_channel_info("channel-7"), list_res.channels[1]);
-
-        let raw_channel = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::Channel {
-                id: "channel-3".to_string(),
-            },
-        )
-        .unwrap();
-        let chan_res: ChannelResponse = from_binary(&raw_channel).unwrap();
-        assert_eq!(chan_res.info, mock_channel_info("channel-3"));
-        assert_eq!(0, chan_res.total_sent.len());
-        assert_eq!(0, chan_res.balances.len());
-
-        let err = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::Channel {
-                id: "channel-10".to_string(),
-            },
-        )
-        .unwrap_err();
-        assert_eq!(err, StdError::not_found("cw20_ics20::state::ChannelInfo"));
-    }
-
-    #[test]
-    fn proper_checks_on_execute_native() {
-        let send_channel = "channel-5";
-        let mut deps = setup(&[send_channel, "channel-10"]);
-
-        let mut transfer = TransferMsg {
-            channel: send_channel.to_string(),
-            remote_address: "foreign-address".to_string(),
-            timeout: None,
-        };
-
-        // works with proper funds
-        let msg = ExecuteMsg::Transfer(transfer.clone());
-        let info = mock_info("foobar", &coins(1234567, "ucosm"));
-        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(1, res.messages.len());
-        if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-            channel_id,
-            data,
-            timeout,
-        }) = &res.messages[0].msg
-        {
-            let expected_timeout = mock_env().block.time.plus_seconds(DEFAULT_TIMEOUT);
-            assert_eq!(timeout, &expected_timeout.into());
-            assert_eq!(channel_id.as_str(), send_channel);
-            let msg: Ics20Packet = from_binary(data).unwrap();
-            assert_eq!(msg.amount, Uint128::new(1234567));
-            assert_eq!(msg.denom.as_str(), "ucosm");
-            assert_eq!(msg.sender.as_str(), "foobar");
-            assert_eq!(msg.receiver.as_str(), "foreign-address");
-        } else {
-            panic!("Unexpected return message: {:?}", res.messages[0]);
-        }
-
-        // reject with no funds
-        let msg = ExecuteMsg::Transfer(transfer.clone());
-        let info = mock_info("foobar", &[]);
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Payment(PaymentError::NoFunds {}));
-
-        // reject with multiple tokens funds
-        let msg = ExecuteMsg::Transfer(transfer.clone());
-        let info = mock_info("foobar", &[coin(1234567, "ucosm"), coin(54321, "uatom")]);
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Payment(PaymentError::MultipleDenoms {}));
-
-        // reject with bad channel id
-        transfer.channel = "channel-45".to_string();
-        let msg = ExecuteMsg::Transfer(transfer);
-        let info = mock_info("foobar", &coins(1234567, "ucosm"));
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(
-            err,
-            ContractError::NoSuchChannel {
-                id: "channel-45".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn proper_checks_on_execute_cw20() {
-        let send_channel = "channel-15";
-        let mut deps = setup(&["channel-3", send_channel]);
-
-        let cw20_addr = "my-token";
-        let transfer = TransferMsg {
-            channel: send_channel.to_string(),
-            remote_address: "foreign-address".to_string(),
-            timeout: Some(7777),
-        };
-        let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
-            sender: "my-account".into(),
-            amount: Uint128::new(888777666),
-            msg: to_binary(&transfer).unwrap(),
-        });
-
-        // works with proper funds
-        let info = mock_info(cw20_addr, &[]);
-        let res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
-        assert_eq!(1, res.messages.len());
-        if let CosmosMsg::Ibc(IbcMsg::SendPacket {
-            channel_id,
-            data,
-            timeout,
-        }) = &res.messages[0].msg
-        {
-            let expected_timeout = mock_env().block.time.plus_seconds(7777);
-            assert_eq!(timeout, &expected_timeout.into());
-            assert_eq!(channel_id.as_str(), send_channel);
-            let msg: Ics20Packet = from_binary(data).unwrap();
-            assert_eq!(msg.amount, Uint128::new(888777666));
-            assert_eq!(msg.denom, format!("cw20:{}", cw20_addr));
-            assert_eq!(msg.sender.as_str(), "my-account");
-            assert_eq!(msg.receiver.as_str(), "foreign-address");
-        } else {
-            panic!("Unexpected return message: {:?}", res.messages[0]);
-        }
-
-        // reject with tokens funds
-        let info = mock_info("foobar", &coins(1234567, "ucosm"));
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Payment(PaymentError::NonPayable {}));
-    }
 }

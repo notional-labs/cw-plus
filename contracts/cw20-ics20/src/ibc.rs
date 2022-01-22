@@ -5,20 +5,30 @@ use cosmwasm_std::{
     attr, entry_point, from_binary, to_binary, BankMsg, Binary, ContractResult, DepsMut, Env,
     IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
     IbcEndpoint, IbcOrder, IbcPacket, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
-    IbcReceiveResponse, Reply, Response, StdResult, SubMsg, Uint128, WasmMsg,
+    IbcReceiveResponse, Reply, Response, StdResult, SubMsg, Uint128, WasmMsg, Addr, Attribute,
 };
 
-use std::convert::TryInto;
+use core::convert::TryInto;
 use hex_literal::hex;
-use std::convert::AsRef;
+use core::convert::AsRef;
+use std::convert::TryFrom;
+use hex::ToHex;
+
 
 use sha2::{Sha256, Digest};
 use crate::amount::Amount;
 
 use subtle_encoding::bech32;
 
+use crate::tx::{CosmosTx, Msg};
+use crate::prost_ext;
+
+use crate::contract::try_send;
+use crate::tx::{MsgSwapExactAmountIn, MsgJoinSwapExternAmountIn};
+use crate::{proto};
 use crate::error::{ContractError, Never};
-use crate::state::{ChannelInfo, CHANNEL_INFO, CHANNEL_STATE};
+use crate::state::{ChannelInfo, CHANNEL_INFO, CHANNEL_STATE, DENOM, CONNECTION_TO_IBC_DENOM,
+    TRANSFER_ACTION, SWAP_ACTION, JOIN_POOL_ACTION,};
 use cw20::Cw20ExecuteMsg;
 
 pub const ICS20_VERSION: &str = "ics20-1";
@@ -116,10 +126,11 @@ pub fn reply(_deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contra
 #[cfg_attr(not(feature = "library"), entry_point)]
 /// enforces ordering and versioning constraints
 pub fn ibc_channel_open(
-    _deps: DepsMut,
+    deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
 ) -> Result<(), ContractError> {
+
     enforce_order_and_version(msg.channel(), msg.counterparty_version())?;
     Ok(())
 }
@@ -144,11 +155,31 @@ pub fn get_ica_address(controller_port_id: &String) -> String{
 
     x[..32].clone_from_slice(&out.as_slice());
 
-    let ica_addr = bech32::encode("juno", &x);
+    let ica_addr = bech32::encode("cosmos", &x);
 
 
 
     return ica_addr;
+}
+
+pub fn get_escrow_address(channel_id: String, action: &str) -> Addr {
+    return Addr::unchecked(channel_id + "/" + action);
+}
+
+pub fn get_ibc_denom(dest_port: String, dest_chan: &str) -> String {
+    let denom_path = dest_port + "/" + dest_chan + "/" + DENOM;
+    let hasher = Sha256::new();
+    hasher.update(denom_path.as_bytes());
+
+    let denom_path_hash = hasher.finalize().clone().as_slice();
+    // denom_path_hash.clone();
+    // let mut hash_bz :[u8;32];
+
+    // hash_bz[..32].clone_from_slice(&denom_path_hash);
+
+    let mut s = String::with_capacity(2 * denom_path_hash.len());
+    denom_path_hash.write_hex(&mut s).expect("Failed to write");
+    return "ibc/".to_string() + &s; 
 }
 
 pub fn is_ica_port(controller_port_id: &String) -> bool{
@@ -190,9 +221,13 @@ pub fn ibc_channel_connect(
             connection_id: channel.connection_id,
             ica_addr: "".to_string()
         };
-    
-    }
 
+        let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &channel.connection_id)?;
+        if ibc_denom.is_none() {
+            let ibc_denom = get_ibc_denom(channel.counterparty_endpoint.port_id, &channel.counterparty_endpoint.channel_id);
+            CONNECTION_TO_IBC_DENOM.save(deps.storage, &channel.connection_id, &ibc_denom);        
+        }
+      }
     CHANNEL_INFO.save(deps.storage, &info.id, &info)?;
 
     Ok(IbcBasicResponse::default())
@@ -243,6 +278,8 @@ pub fn ibc_packet_receive(
 
     let res = match do_ibc_packet_receive(deps, &packet) {
         Ok(msg) => {
+
+
             // build attributes first so we don't have to clone msg below
             // similar event messages like ibctransfer module
 
@@ -258,10 +295,13 @@ pub fn ibc_packet_receive(
                 attr("success", "true"),
             ];
             let to_send = Amount::from_parts(denom.into(), msg.amount);
-            let msg = send_amount(to_send, msg.receiver);
+
+            let escrow_address = get_escrow_address(packet.dest.channel_id,TRANSFER_ACTION);
+
+            try_send(deps, &escrow_address, &Addr::unchecked(msg.receiver), msg.amount).unwrap();
+
             IbcReceiveResponse::new()
                 .set_ack(ack_success())
-                .add_submessage(msg)
                 .add_attributes(attributes)
         }
         Err(err) => IbcReceiveResponse::new()
@@ -275,6 +315,20 @@ pub fn ibc_packet_receive(
 
     // if we have funds, now send the tokens to the requested recipient
     Ok(res)
+}
+
+pub fn write_memo(signer: &Addr, action: &str) -> String {
+    return signer.as_ref().to_string() + "/" + action
+}
+
+
+fn get_signer_and_action_from_memo(memo: String) -> Result<(String,String), ContractError> {
+    let mut split = memo.split("/");
+    let vec: Vec<&str> = split.collect();
+    if vec.len() != 2 {
+        return Err(ContractError::InvalidPacket{})
+    }
+    Ok((vec[0].to_string(), vec[1].to_string()))
 }
 
 // Returns local denom if the denom is an encoded voucher from the expected endpoint
@@ -310,6 +364,9 @@ fn do_ibc_packet_receive(deps: DepsMut, packet: &IbcPacket) -> Result<Ics20Packe
     // If the token originated on the remote chain, it looks like "ucosm".
     // If it originated on our chain, it looks like "port/channel/ucosm".
     let denom = parse_voucher_denom(&msg.denom, &packet.src)?;
+    if denom != DENOM {
+        return Err(ContractError::InvalidCoin{});
+    }
 
     let amount = msg.amount;
     CHANNEL_STATE.update(
@@ -383,52 +440,67 @@ fn on_packet_success(deps: DepsMut, packet: IbcPacket) -> Result<IbcBasicRespons
 
 // return the tokens to sender
 fn on_packet_failure(
-    _deps: DepsMut,
+    deps: DepsMut,
     packet: IbcPacket,
     err: String,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let msg: Ics20Packet = from_binary(&packet.data)?;
-    // similar event messages like ibctransfer module
-    let attributes = vec![
-        attr("action", "acknowledge"),
-        attr("sender", &msg.sender),
-        attr("receiver", &msg.receiver),
-        attr("denom", &msg.denom),
-        attr("amount", &msg.amount.to_string()),
-        attr("success", "false"),
-        attr("error", err),
-    ];
+    let port_id = packet.src.port_id;
+    let refund_amount: u128;
+    let escrow_addr: Addr;
+    let attributes : vec![Attribute];
+    let refund_addr : Addr;
+    if is_ica_port(&port_id) {
+        let msg: InterchainAccountPacketData = from_binary(&packet.data)?;
+        let cosmos_tx_bz = msg.data;
+        let cosmos_tx_proto : proto::ibc::applications::interchain_accounts::v1::CosmosTx;
+        cosmos_tx_proto =  prost::Message::decode(&*cosmos_tx_bz).unwrap();
+        let cosmos_tx: CosmosTx = TryFrom::try_from(cosmos_tx_proto).unwrap();
+        let (signer, action) = get_signer_and_action_from_memo(msg.memo).unwrap();
+        refund_addr = Addr::unchecked(signer);
+        if action == "swap" {
+            let swap_msg: MsgSwapExactAmountIn = Msg::from_any(&cosmos_tx.messages[0]).unwrap();
+            refund_amount = swap_msg.token_in.amount.parse::<u128>().unwrap();
+            if swap_msg.token_in.denom != DENOM {
+                refund_amount = 0;
+            }
+            escrow_addr = get_escrow_address(packet.src.channel_id, SWAP_ACTION);
+        } else if action == "join_pool" {
+            let join_pool_msg: MsgJoinSwapExternAmountIn = Msg::from_any(&cosmos_tx.messages[0]).unwrap();
+            refund_amount = join_pool_msg.token_in.amount.parse::<u128>().unwrap();
+            if join_pool_msg.token_in.denom != DENOM {
+                refund_amount = 0;
+            }
+            escrow_addr = get_escrow_address(packet.src.channel_id, JOIN_POOL_ACTION);
+        } 
+    } else {
+        let msg: Ics20Packet = from_binary(&packet.data)?;
 
-    let amount = Amount::from_parts(msg.denom, msg.amount);
-    let msg = send_amount(amount, msg.sender);
-    Ok(IbcBasicResponse::new()
-        .add_attributes(attributes)
-        .add_submessage(msg))
-}
+        // similar event messages like ibctransfer module
+        attributes = vec![
+            attr("action", "acknowledge"),
+            attr("sender", &msg.sender),
+            attr("receiver", &msg.receiver),
+            attr("denom", &msg.denom),
+            attr("amount", &msg.amount.to_string()),
+            attr("success", "false"),
+            attr("error", err),
+        ];
 
-fn send_amount(amount: Amount, recipient: String) -> SubMsg {
-    match amount {
-        Amount::Native(coin) => SubMsg::reply_on_error(
-            BankMsg::Send {
-                to_address: recipient,
-                amount: vec![coin],
-            },
-            SEND_TOKEN_ID,
-        ),
-        Amount::Cw20(coin) => {
-            let msg = Cw20ExecuteMsg::Transfer {
-                recipient,
-                amount: coin.amount,
-            };
-            let exec = WasmMsg::Execute {
-                contract_addr: coin.address,
-                msg: to_binary(&msg).unwrap(),
-                funds: vec![],
-            };
-            SubMsg::reply_on_error(exec, SEND_TOKEN_ID)
+        refund_amount = msg.amount.into();
+        if msg.denom != DENOM {
+            refund_amount = 0;
         }
+        escrow_addr = get_escrow_address(packet.src.channel_id, TRANSFER_ACTION);
+        refund_addr = Addr::unchecked(msg.sender);
     }
+
+    // refund
+    try_send(deps, &escrow_addr, &refund_addr, refund_amount.into()).unwrap();
+
+    Ok(IbcBasicResponse::new()
+        .add_attributes(attributes))
 }
+
 
 #[cfg(test)]
 mod test {

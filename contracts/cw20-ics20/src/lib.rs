@@ -12,9 +12,9 @@ mod base;
 
 pub use crate::{
     error::{ContractError, Result, Error},
-    base::{AccountId, Coin, Denom, SwapAmountInRoute},
+    base::{ Coin, SwapAmountInRoute},
     decimal::Decimal,
-    tx::{MsgSwapExactAmountIn,CosmosTx,MsgJoinPool,MsgSend,},
+    tx::{MsgSwapExactAmountIn,CosmosTx,MsgJoinPool,MsgSend,MsgJoinSwapExternAmountIn,},
 };
 
 pub use prost_types::Any;
@@ -22,4 +22,3 @@ pub use prost_types::Any;
 pub use eyre::Report as ErrorReport;
 
 pub use cosmos_sdk_proto as proto;
-pub use tendermint;

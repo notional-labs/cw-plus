@@ -10,6 +10,13 @@ use crate::state::ChannelInfo;
 pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
+    pub balances: vec![Balance],
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+pub struct Balance {
+    pub address: String,
+    pub amount: u128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
@@ -18,12 +25,12 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// This accepts a properly-encoded ReceiveMsg from a cw20 contract
-    Receive(Cw20ReceiveMsg),
     /// This allows us to transfer *exactly one* native token
     Transfer(TransferMsg),
     
-    IbcSwap(SwapMsg),
+    Swap(SwapMsg),
+
+    JoinPool(JoinPoolMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
@@ -43,10 +50,7 @@ pub struct SwapMsg {
 
     pub out_denom: String,
 
-    pub in_denom: String,
-
     pub in_amount: String,
-
 }
 
 /// This is the message we accept via Receive
@@ -60,6 +64,27 @@ pub struct TransferMsg {
     pub remote_address: String,
     /// How long the packet lives in seconds. If not specified, use default_timeout
     pub timeout: Option<u64>,
+
+    pub amount: u64,
+}
+
+/// This is the message we accept via Receive
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct JoinPoolMsg {
+    /// The local channel to send the packets on
+    pub channel: String,
+    /// The remote address to send to.
+    /// Don't use HumanAddress as this will likely have a different Bech32 prefix than we use
+    /// and cannot be validated locally
+    pub remote_address: String,
+    /// How long the packet lives in seconds. If not specified, use default_timeout
+    pub timeout: Option<u64>,
+
+    pub share_out_exact_amount: String,
+
+    pub pool_id: u64,
+
+    pub in_amount: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -72,6 +97,20 @@ pub enum QueryMsg {
     /// Returns the details of the name channel, error if not created.
     /// Return type: ChannelResponse.
     Channel { id: String },
+
+    Balances {},
+
+    Balance { address: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct BalanceResponse {
+    pub amount: u128,
+}
+
+#[derive(Serialize, Deserialize, Clone, JsonSchema, Debug)]
+pub struct BalancesResponse {
+    pub balances: Vec<Balance>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]

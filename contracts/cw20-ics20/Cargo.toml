@@ -19,7 +19,7 @@ backtraces = ["cosmwasm-std/backtraces"]
 library = []
 
 [dependencies]
-cosmos-sdk-proto = { version = "0.9", default-features = false, path = "../cosmos-sdk-proto" }
+cosmos-sdk-proto = { version = "0.9", default-features = false, path = "../../packages/cosmos-sdk-proto" }
 cw0 = { path = "../../packages/cw0", version = "0.10.3" }
 cw2 = { path = "../../packages/cw2", version = "0.10.3" }
 cw20 = { path = "../../packages/cw20", version = "0.10.3" }
@@ -30,11 +30,12 @@ prost = "0.9"
 eyre = "0.6"
 prost-types = "0.9"
 subtle-encoding = { version = "0.5", features = ["bech32-preview"] }
-tendermint = { version = "=0.23.3", features = ["secp256k1"] }
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
 sha2 = "0.10.1"
 hex-literal = "0.3.4"
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.3.1"
 
 [dev-dependencies]
 cosmwasm-schema = { version = "1.0.0-beta" }

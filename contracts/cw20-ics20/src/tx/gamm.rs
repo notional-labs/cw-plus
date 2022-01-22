@@ -124,3 +124,57 @@ impl From<&MsgJoinPool> for proto::osmosis::gamm::v1beta1::MsgJoinPool {
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub struct MsgJoinSwapExternAmountIn {
+    /// Sender's address.
+    pub sender: String,
+
+    pub pool_id: u64,
+
+    pub token_in: Coin,
+
+    pub share_out_min_amount: String,
+}
+
+impl Msg for MsgJoinSwapExternAmountIn {
+    type Proto = proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn;
+}
+
+impl TryFrom<proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn> for MsgJoinSwapExternAmountIn {
+    type Error = ErrorReport;
+
+    fn try_from(proto: proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn) -> Result<MsgJoinSwapExternAmountIn> {
+        MsgJoinSwapExternAmountIn::try_from(&proto)
+    }
+}
+
+impl TryFrom<&proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn> for MsgJoinSwapExternAmountIn {
+    type Error = ErrorReport;
+
+    fn try_from(proto: &proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn) -> Result<MsgJoinSwapExternAmountIn> {
+        Ok(MsgJoinSwapExternAmountIn {
+            sender: proto.sender.parse()?,
+            pool_id: proto.pool_id,
+            share_out_min_amount: proto.share_out_min_amount.parse()?,
+            token_in: TryFrom::try_from(proto.token_in.clone().unwrap())?,
+        })
+    }
+}
+
+impl From<MsgJoinSwapExternAmountIn> for proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn {
+    fn from(msg: MsgJoinSwapExternAmountIn) -> proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn {
+        proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn::from(&msg)
+    }
+}
+
+impl From<&MsgJoinSwapExternAmountIn> for proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn {
+    fn from(msg: &MsgJoinSwapExternAmountIn) -> proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn {
+        proto::osmosis::gamm::v1beta1::MsgJoinSwapExternAmountIn {
+            sender: msg.sender.to_string(),
+            pool_id: msg.pool_id,
+            share_out_min_amount: msg.share_out_min_amount.to_string(),
+            token_in: From::from(proto::cosmos::base::v1beta1::Coin::from(&msg.token_in)),
+        }
+    }
+}

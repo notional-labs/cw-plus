@@ -30,3 +30,14 @@ pub struct MsgJoinPool {
     pub token_in_maxs: ::prost::alloc::vec::Vec<super::super::super::cosmos::base::v1beta1::Coin>,  
 }
 
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MsgJoinSwapExternAmountIn {
+    #[prost(string, tag = "1")]
+    pub sender: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub pool_id: u64,
+    #[prost(message, optional, tag = "3")]
+    pub token_in: ::core::option::Option<super::super::super::cosmos::base::v1beta1::Coin>,  
+    #[prost(string, tag = "4")]
+    pub share_out_min_amount: ::prost::alloc::string::String,
+ }

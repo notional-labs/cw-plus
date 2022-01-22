@@ -54,6 +54,15 @@ pub enum ContractError {
 
     #[error("{channel_id} is not an Ica Channel")]
     NotAnIcaChan { channel_id: String},
+
+    #[error("Invalid zero amount")]
+    InvalidZeroAmount {},
+
+    #[error("Invalid packet")]
+    InvalidPacket {},
+
+    #[error("can't handle foreign coin")]
+    InvalidCoin {},
 }
 
 impl From<FromUtf8Error> for ContractError {
