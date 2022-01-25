@@ -21,6 +21,7 @@ use crate::tx::{
 use crate::base::{Coin,SwapAmountInRoute,};
 use crate::state::{Config, DENOM, CHANNEL_INFO, CHANNEL_STATE, CONFIG, BALANCES, CONNECTION_TO_IBC_DENOM, TRANSFER_ACTION, SWAP_ACTION, JOIN_POOL_ACTION};
 use cw0::{nonpayable, one_coin};
+use std::convert::From;
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:cw20-ics20";
@@ -39,7 +40,7 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &cfg)?;
     for balance in msg.balances {
-        BALANCES.save(deps.storage, balance.address, balance.amount);
+        BALANCES.save(deps.storage, &Addr::unchecked(balance.address), &balance.amount.into());
     }
     Ok(Response::default())
 }
@@ -93,7 +94,7 @@ pub fn execute_ibc_join(
 
     let gamm_denom = "gamm/pool/".to_string() + &msg.pool_id.to_string();
 
-    let ica_addr = chan_info.unwrap().ica_addr;
+    let ica_addr = chan_info_unwraped.ica_addr;
 
     if ica_addr == "" {
         return Err(ContractError::NotAnIcaChan {channel_id: msg.channel})
@@ -107,7 +108,7 @@ pub fn execute_ibc_join(
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
 
-    let escrow_addr = get_escrow_address(msg.channel, JOIN_POOL_ACTION);
+    let escrow_addr = get_escrow_address(msg.channel.to_string(), JOIN_POOL_ACTION);
     let in_amount_u128 : u128 = msg.in_amount.parse::<u128>().unwrap();
     try_send(deps, &sender, &escrow_addr, in_amount_u128.into()).unwrap();
 
@@ -171,16 +172,19 @@ pub fn execute_ibc_swap(
     // ensure the requested channel is registered
     // FIXME: add a .has method to map to make this faster
     let chan_info = CHANNEL_INFO.may_load(deps.storage, &msg.channel)?;
-    
-    let connection_id = chan_info.unwrap().connection_id;
 
-    let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &connection_id)?.unwrap();
-    
     if chan_info.is_none() {
         return Err(ContractError::NoSuchChannel { id: msg.channel });
     }
 
-    let ica_addr = chan_info.unwrap().ica_addr;
+    let unwraped_chan_info = chan_info.unwrap();
+    
+    let connection_id = unwraped_chan_info.connection_id.to_string();
+
+    let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &connection_id)?.unwrap();
+    
+
+    let ica_addr = unwraped_chan_info.ica_addr;
 
     if ica_addr == "" {
         return Err(ContractError::NotAnIcaChan {channel_id: msg.channel})
@@ -194,7 +198,7 @@ pub fn execute_ibc_swap(
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
 
-    let escrow_addr = get_escrow_address(msg.channel, SWAP_ACTION);
+    let escrow_addr = get_escrow_address(msg.channel.to_string(), SWAP_ACTION);
     let in_amount_u128 : u128 = msg.in_amount.parse::<u128>().unwrap();
     try_send(deps, &sender, &escrow_addr, in_amount_u128.into()).unwrap();
 
@@ -297,9 +301,8 @@ pub fn execute_transfer(
     };
     // timeout is in nanoseconds
     let timeout = env.block.time.plus_seconds(timeout_delta);
-    let connection_id = chan_info.unwrap().connection_id;
 
-    let escrow_addr = get_escrow_address(msg.channel, TRANSFER_ACTION);
+    let escrow_addr = get_escrow_address(msg.channel.to_string(), TRANSFER_ACTION);
 
     try_send(deps, &sender, &escrow_addr, msg.amount.into()).unwrap();
 

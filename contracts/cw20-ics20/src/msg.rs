@@ -10,13 +10,13 @@ use crate::state::ChannelInfo;
 pub struct InitMsg {
     /// Default timeout for ics20 packets, specified in seconds
     pub default_timeout: u64,
-    pub balances: vec![Balance],
+    pub balances: Vec<Balance>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct Balance {
     pub address: String,
-    pub amount: u128,
+    pub amount: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
@@ -97,8 +97,6 @@ pub enum QueryMsg {
     /// Returns the details of the name channel, error if not created.
     /// Return type: ChannelResponse.
     Channel { id: String },
-
-    Balances {},
 
     Balance { address: String },
 }

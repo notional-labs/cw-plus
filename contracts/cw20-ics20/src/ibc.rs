@@ -151,11 +151,11 @@ pub fn get_ica_address(controller_port_id: &String) -> String{
     let out = new_hasher.chain_update(ica_module_acc_addr_hash).chain_update(controller_port_id.as_bytes()).finalize();
 
 
-    let mut x = vec![0;32];
+    // let mut x = vec![0;32];
 
-    x[..32].clone_from_slice(&out.as_slice());
+    // x[..32].clone_from_slice(&out.as_slice());
 
-    let ica_addr = bech32::encode("cosmos", &x);
+    let ica_addr = bech32::encode("cosmos", &out.as_slice());
 
 
 
@@ -168,14 +168,13 @@ pub fn get_escrow_address(channel_id: String, action: &str) -> Addr {
 
 pub fn get_ibc_denom(dest_port: String, dest_chan: &str) -> String {
     let denom_path = dest_port + "/" + dest_chan + "/" + DENOM;
-    let hasher = Sha256::new();
+    let mut hasher = Sha256::new();
     hasher.update(denom_path.as_bytes());
 
-    let denom_path_hash = hasher.finalize().clone().as_slice();
-    // denom_path_hash.clone();
-    // let mut hash_bz :[u8;32];
+    let denom_path_hash = hasher.finalize();
+    // let mut hash_bz = vec![0;32];
 
-    // hash_bz[..32].clone_from_slice(&denom_path_hash);
+    // hash_bz[..32].clone_from_slice(&denom_path_hash.as_slice());
 
     let mut s = String::with_capacity(2 * denom_path_hash.len());
     denom_path_hash.write_hex(&mut s).expect("Failed to write");
@@ -218,13 +217,13 @@ pub fn ibc_channel_connect(
         info = ChannelInfo {
             id: channel.endpoint.channel_id,
             counterparty_endpoint: channel.counterparty_endpoint,
-            connection_id: channel.connection_id,
+            connection_id: channel.connection_id.to_string(),
             ica_addr: "".to_string()
         };
 
-        let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &channel.connection_id)?;
+        let ibc_denom = CONNECTION_TO_IBC_DENOM.may_load(deps.storage, &*channel.connection_id.to_owned())?;
         if ibc_denom.is_none() {
-            let ibc_denom = get_ibc_denom(channel.counterparty_endpoint.port_id, &channel.counterparty_endpoint.channel_id);
+            let ibc_denom = get_ibc_denom(info.counterparty_endpoint.port_id.to_string(), &info.counterparty_endpoint.channel_id);
             CONNECTION_TO_IBC_DENOM.save(deps.storage, &channel.connection_id, &ibc_denom);        
         }
       }
@@ -294,11 +293,6 @@ pub fn ibc_packet_receive(
                 attr("amount", msg.amount),
                 attr("success", "true"),
             ];
-            let to_send = Amount::from_parts(denom.into(), msg.amount);
-
-            let escrow_address = get_escrow_address(packet.dest.channel_id,TRANSFER_ACTION);
-
-            try_send(deps, &escrow_address, &Addr::unchecked(msg.receiver), msg.amount).unwrap();
 
             IbcReceiveResponse::new()
                 .set_ack(ack_success())
@@ -382,6 +376,10 @@ fn do_ibc_packet_receive(deps: DepsMut, packet: &IbcPacket) -> Result<Ics20Packe
             Ok(cur)
         },
     )?;
+    let escrow_address = get_escrow_address(packet.dest.channel_id.to_string(),TRANSFER_ACTION);
+
+    try_send(deps, &escrow_address, &Addr::unchecked(msg.receiver.to_string()), msg.amount).unwrap();
+
     Ok(msg)
 }
 
@@ -445,10 +443,8 @@ fn on_packet_failure(
     err: String,
 ) -> Result<IbcBasicResponse, ContractError> {
     let port_id = packet.src.port_id;
-    let refund_amount: u128;
-    let escrow_addr: Addr;
-    let attributes : vec![Attribute];
-    let refund_addr : Addr;
+    let mut attributes : Vec<Attribute> = [].to_vec();
+ 
     if is_ica_port(&port_id) {
         let msg: InterchainAccountPacketData = from_binary(&packet.data)?;
         let cosmos_tx_bz = msg.data;
@@ -456,21 +452,25 @@ fn on_packet_failure(
         cosmos_tx_proto =  prost::Message::decode(&*cosmos_tx_bz).unwrap();
         let cosmos_tx: CosmosTx = TryFrom::try_from(cosmos_tx_proto).unwrap();
         let (signer, action) = get_signer_and_action_from_memo(msg.memo).unwrap();
-        refund_addr = Addr::unchecked(signer);
+        let refund_addr = Addr::unchecked(signer);
         if action == "swap" {
             let swap_msg: MsgSwapExactAmountIn = Msg::from_any(&cosmos_tx.messages[0]).unwrap();
-            refund_amount = swap_msg.token_in.amount.parse::<u128>().unwrap();
+            let mut refund_amount = swap_msg.token_in.amount.parse::<u128>().unwrap();
             if swap_msg.token_in.denom != DENOM {
                 refund_amount = 0;
             }
-            escrow_addr = get_escrow_address(packet.src.channel_id, SWAP_ACTION);
+            let escrow_addr = get_escrow_address(packet.src.channel_id, SWAP_ACTION);
+            try_send(deps, &escrow_addr, &refund_addr, refund_amount.into()).unwrap();
+
         } else if action == "join_pool" {
             let join_pool_msg: MsgJoinSwapExternAmountIn = Msg::from_any(&cosmos_tx.messages[0]).unwrap();
-            refund_amount = join_pool_msg.token_in.amount.parse::<u128>().unwrap();
+            let mut refund_amount = join_pool_msg.token_in.amount.parse::<u128>().unwrap();
             if join_pool_msg.token_in.denom != DENOM {
                 refund_amount = 0;
             }
-            escrow_addr = get_escrow_address(packet.src.channel_id, JOIN_POOL_ACTION);
+            let escrow_addr = get_escrow_address(packet.src.channel_id, JOIN_POOL_ACTION);
+            try_send(deps, &escrow_addr, &refund_addr, refund_amount.into()).unwrap();
+
         } 
     } else {
         let msg: Ics20Packet = from_binary(&packet.data)?;
@@ -486,19 +486,21 @@ fn on_packet_failure(
             attr("error", err),
         ];
 
-        refund_amount = msg.amount.into();
+        let mut refund_amount = msg.amount.into();
         if msg.denom != DENOM {
             refund_amount = 0;
         }
-        escrow_addr = get_escrow_address(packet.src.channel_id, TRANSFER_ACTION);
-        refund_addr = Addr::unchecked(msg.sender);
+        let escrow_addr = get_escrow_address(packet.src.channel_id, TRANSFER_ACTION);
+        let refund_addr = Addr::unchecked(msg.sender);
+
+        try_send(deps, &escrow_addr, &refund_addr, refund_amount.into()).unwrap();
+
     }
 
     // refund
-    try_send(deps, &escrow_addr, &refund_addr, refund_amount.into()).unwrap();
-
     Ok(IbcBasicResponse::new()
-        .add_attributes(attributes))
+    .add_attributes(attributes))
+
 }
 
 

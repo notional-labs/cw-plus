@@ -30,7 +30,7 @@
         },
         "amount": {
           "type": "integer",
-          "format": "uint128"
+          "format": "uint64"
         }
       }
     }
