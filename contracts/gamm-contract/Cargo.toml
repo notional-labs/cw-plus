@@ -1,0 +1,38 @@
+[package]
+name = "gamm_contract"
+version = "0.10.3"
+edition = "2018"
+description = "Contracts that pool and swap on osmosis via ibc"
+license = "Apache-2.0"
+rust-version = "1.56"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+backtraces = ["cosmwasm-std/backtraces"]
+# use library feature to disable all init/handle/query exports
+library = []
+
+[dependencies]
+cosmos-sdk-proto = { version = "0.9", default-features = false, path = "../../packages/cosmos-sdk-proto" }
+cw0 = "0.10.3" 
+cw2 = "0.10.3" 
+cw20 = "0.10.3"
+cosmwasm-std = { version = "1.0.0-beta", features = ["stargate"] }
+cw-storage-plus = "0.10.3" 
+schemars = "0.8.1"
+prost = "0.9"
+eyre = "0.6"
+prost-types = "0.9"
+subtle-encoding = { version = "0.5", features = ["bech32-preview"] }
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+thiserror = { version = "1.0.23" }
+sha2 = "0.10.1"
+getrandom = { version = "0.2", features = ["js"] }
+hex = "0.3.1"
+hex-literal = "0.3.4"
+
+[dev-dependencies]
+cosmwasm-schema = { version = "1.0.0-beta" }
+
